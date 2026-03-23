@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BioScan AI — Visual Weight Estimator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:              #0a0e1a;
+      --surface:         #111827;
+      --surface2:        #1f2937;
+      --border:          #374151;
+      --accent:          #60a5fa;
+      --green:           #34d399;
+      --warn-bg:         #451a03;
+      --warn-border:     #92400e;
+      --warn-text:       #fbbf24;
+      --err-bg:          #2d1515;
+      --err-border:      #7f1d1d;
+      --err-text:        #f87171;
+      --text:            #f9fafb;
+      --muted:           #9ca3af;
+      --radius:          10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 0 16px 56px;
+    }
+
+    .container { max-width: 700px; margin: 0 auto; }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header {
+      text-align: center;
+      padding: 36px 0 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    header h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      color: var(--accent);
+    }
+    header p { color: var(--muted); margin-top: 6px; font-size: 0.92rem; }
+
+    /* ── Card ────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    /* ── Inputs ──────────────────────────────────────────── */
+    .inputs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .input-group label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .input-group input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1.05rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+      -moz-appearance: textfield;
+    }
+    .input-group input::-webkit-inner-spin-button,
+    .input-group input::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .input-group input:focus { border-color: var(--accent); }
+
+    /* ── Webcam ──────────────────────────────────────────── */
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    #webcam-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform: scaleX(-1); /* mirror for selfie-cam feel */
+    }
+    #camera-denied {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+      text-align: center;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    #capture-canvas { display: none; }
+
+    /* ── Buttons ─────────────────────────────────────────── */
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.92rem;
+      font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+    .btn:not(:disabled):hover { opacity: 0.85; }
+    .btn:not(:disabled):active { transform: scale(0.97); }
+    .btn-primary  { background: var(--accent); color: #0a0e1a; flex: 1; min-width: 180px; }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    /* ── Error ───────────────────────────────────────────── */
+    .error-box {
+      background: var(--err-bg);
+      border: 1px solid var(--err-border);
+      color: var(--err-text);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    /* ── Loading overlay ─────────────────────────────────── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 14, 26, 0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      z-index: 999;
+    }
+    .spinner {
+      width: 46px;
+      height: 46px;
+      border: 3px solid var(--surface2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: var(--muted); font-size: 0.92rem; letter-spacing: 0.03em; }
+
+    /* ── Results ─────────────────────────────────────────── */
+    .weight-display {
+      text-align: center;
+      padding: 16px 0 8px;
+    }
+    .weight-value {
+      font-size: 3.6rem;
+      font-weight: 700;
+      letter-spacing: -2px;
+      color: var(--green);
+      line-height: 1;
+    }
+    .weight-label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* CI bar */
+    .ci-section { margin: 22px 0 4px; }
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .ci-bar-wrapper {
+      position: relative;
+      height: 28px;
+      display: flex;
+      align-items: center;
+    }
+    .ci-bar-track {
+      position: absolute;
+      left: 0; right: 0;
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: visible;
+    }
+    .ci-bar-fill {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      background: var(--accent);
+      opacity: 0.5;
+      border-radius: 4px;
+      transition: left 0.3s, width 0.3s;
+    }
+    .ci-bar-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 14px;
+      height: 14px;
+      background: var(--green);
+      border: 2px solid var(--bg);
+      border-radius: 50%;
+      z-index: 2;
+      transition: left 0.3s;
+    }
+    .ci-axis {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .ci-range-center {
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .ci-range-center strong { color: var(--text); }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .stat-item {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .stat-value { font-size: 1.05rem; font-weight: 600; }
+
+    /* Low-confidence warning */
+    .low-confidence-warning {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      margin-top: 16px;
+    }
+    .low-confidence-warning::before {
+      content: '⚠ ';
+      font-size: 0.95rem;
+    }
+
+    /* ── QR section ──────────────────────────────────────── */
+    .qr-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 20px;
+      text-align: center;
+      margin-top: 4px;
+    }
+    .qr-section h3 { font-size: 0.95rem; margin-bottom: 18px; }
+    .qr-section img {
+      width: 192px;
+      height: 192px;
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .qr-hint {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 14px;
+      line-height: 1.5;
+    }
+    .qr-hint code {
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.76rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <h1>BioScan AI</h1>
+      <p>Visual body weight estimation · stand facing the camera, full body visible</p>
+    </header>
+
+    <!-- Inputs -->
+    <div class="card">
+      <div class="inputs-row">
+        <div class="input-group">
+          <label for="height-cm">Height (cm)</label>
+          <input type="number" id="height-cm" min="50" max="300" step="1" placeholder="175" />
+        </div>
+        <div class="input-group">
+          <label for="age">Age (years)</label>
+          <input type="number" id="age" min="5" max="120" step="1" placeholder="30" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Webcam -->
+    <div class="card">
+      <div class="video-wrapper">
+        <video id="webcam-video" autoplay playsinline muted></video>
+        <div id="camera-denied" hidden>
+          Camera access was denied or is unavailable.<br />
+          Allow camera permissions in your browser and reload the page.
+        </div>
+      </div>
+      <canvas id="capture-canvas"></canvas>
+      <div class="btn-row">
+        <button id="capture-btn" class="btn btn-primary">
+          ◉&nbsp; Capture &amp; Analyze
+        </button>
+        <button id="qr-btn" class="btn btn-secondary">
+          📱&nbsp; Switch to Mobile Camera
+        </button>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" class="error-box" hidden></div>
+
+    <!-- Results -->
+    <div id="results" class="card" hidden>
+
+      <div class="weight-display">
+        <div class="weight-value" id="result-weight">—</div>
+        <div class="weight-label">Estimated body weight</div>
+      </div>
+
+      <div class="ci-section">
+        <div class="section-label">95 % Confidence Interval</div>
+        <div class="ci-bar-wrapper">
+          <div class="ci-bar-track">
+            <div class="ci-bar-fill" id="ci-bar-fill"></div>
+          </div>
+          <div class="ci-bar-marker" id="ci-bar-marker"></div>
+        </div>
+        <div class="ci-axis">
+          <span id="ci-bar-min"></span>
+          <span id="ci-bar-max"></span>
+        </div>
+        <div class="ci-range-center" id="ci-range-text"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">Uncertainty (σ)</div>
+          <div class="stat-value" id="result-std">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Processing time</div>
+          <div class="stat-value" id="result-time">—</div>
+        </div>
+      </div>
+
+      <div id="low-confidence-warning" class="low-confidence-warning" hidden></div>
+    </div>
+
+    <!-- QR code (toggle) -->
+    <div id="qr-section" class="qr-section" hidden>
+      <h3>Scan with your phone to use the rear camera</h3>
+      <img src="./static/qr_mobile.png" alt="QR code linking to BioScan AI mobile page" />
+      <p class="qr-hint">
+        Generate with:
+        <code>python frontend/qr_generator.py &lt;ngrok-url&gt;</code>
+      </p>
+    </div>
+
+  </div><!-- /container -->
+
+  <!-- Loading overlay (outside container so it's truly full-screen) -->
+  <div id="loading" hidden>
+    <div class="spinner"></div>
+    <p>Analyzing…</p>
+  </div>
+
+  <script src="./static/js/webcam.js"></script>
+</body>
+</html>

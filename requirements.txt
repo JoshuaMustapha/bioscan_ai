@@ -1,0 +1,50 @@
+# ── API server ────────────────────────────────────────────────────────────────
+# FastAPI application framework, ASGI runner, multipart form-data parsing
+# (required by FastAPI for UploadFile / Form fields), and Pydantic v2 for
+# request/response schema validation.
+fastapi==0.111.1
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+pydantic==2.7.1
+
+# ── Computer vision and human pose detection ──────────────────────────────────
+# OpenCV is used for image decoding (cv2.imdecode), BGR/RGB conversion, face
+# blurring (GaussianBlur, CascadeClassifier), and image resizing.
+# MediaPipe Pose extracts the 33 body landmarks that Stage 2 converts into
+# anthropometric features.
+opencv-python==4.10.0.84
+mediapipe==0.10.11
+
+# ── Deep learning ─────────────────────────────────────────────────────────────
+# PyTorch provides the MLP architecture (nn.Module, nn.Linear, F.dropout),
+# the training loop (optim.Adam, lr_scheduler), DataLoader, and tensor ops
+# used throughout inference and the Monte Carlo Dropout uncertainty estimation.
+torch==2.3.0
+
+# ── Numerical computing and data science ──────────────────────────────────────
+# NumPy: array operations in feature engineering, MC Dropout statistics
+#        (np.mean, np.std), and image buffer handling (np.frombuffer).
+# pandas: loading and merging ANSUR II and SMPL CSV datasets for training
+#         and evaluation.
+# scikit-learn: StandardScaler for feature normalisation; train_test_split
+#               for the training/validation split.
+# joblib: serialising and deserialising the fitted StandardScaler alongside
+#         the model checkpoint (joblib.dump / joblib.load).
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.0
+joblib==1.4.2
+
+# ── QR code generation ────────────────────────────────────────────────────────
+# qrcode generates the QR image for the mobile camera handoff flow.
+# The [pil] extra uses Pillow to render the QR code as a PNG.
+# Pillow is pinned explicitly because it is also used directly by mediapipe.
+qrcode[pil]==7.4.2
+Pillow==10.3.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+# pytest is the test runner for all three test modules.
+# httpx is required by FastAPI's TestClient (starlette.testclient uses httpx
+# as its underlying HTTP transport for async app testing).
+pytest==8.2.1
+httpx==0.27.0
