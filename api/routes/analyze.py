@@ -34,6 +34,7 @@ _HEIGHT_MIN: float = 50.0
 _HEIGHT_MAX: float = 300.0
 _AGE_MIN: int = 5
 _AGE_MAX: int = 120
+_VALID_GENDERS: frozenset[int] = frozenset({0, 1})
 
 
 # ---------------------------------------------------------------------------
@@ -100,14 +101,15 @@ async def analyze(
     image: UploadFile = File(..., description="Full-body JPEG or PNG image."),
     height_cm: float = Form(..., description="Standing height in centimetres."),
     age: int = Form(..., description="Age in years."),
+    gender: int = Form(..., description="Biological sex: 0 for female, 1 for male."),
 ) -> AnalyzeResponse:
-    """Estimate body weight from an uploaded image plus height and age.
+    """Estimate body weight from an uploaded image plus height, age, and gender.
 
     The image is processed through three stages:
 
     1. **Pose detection** — MediaPipe extracts 33 body landmarks.
-    2. **Feature engineering** — 8 anthropometric ratios plus height and age
-       are derived from the landmarks.
+    2. **Feature engineering** — 8 anthropometric ratios plus height, age,
+       and gender are derived from the landmarks and user inputs.
     3. **Weight estimation** — 50 Monte Carlo Dropout forward passes through
        the BioScanMLP yield a point estimate and a 95% confidence interval.
 
@@ -115,9 +117,9 @@ async def analyze(
     extraction so that no identifiable facial data enters the pipeline.
 
     Raises:
-        HTTPException 422: If ``height_cm`` or ``age`` are out of range, if
-            the uploaded file cannot be decoded as an image, or if
-            MediaPipe cannot detect a person in the frame.
+        HTTPException 422: If ``height_cm``, ``age``, or ``gender`` are out
+            of range, if the uploaded file cannot be decoded as an image, or
+            if MediaPipe cannot detect a person in the frame.
         HTTPException 500: For any unexpected internal error.  The response
             body intentionally omits internal details to avoid leaking stack
             traces or model internals to callers.
@@ -140,6 +142,11 @@ async def analyze(
                 f"age must be between {_AGE_MIN} and {_AGE_MAX} years; "
                 f"received {age}."
             ),
+        )
+    if gender not in _VALID_GENDERS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"gender must be 0 (female) or 1 (male); received {gender}.",
         )
 
     # ------------------------------------------------------------------ #
@@ -176,7 +183,7 @@ async def analyze(
         pose_result = request.app.state.pose_detector.detect(bgr)
 
         # Stage 2 — feature engineering
-        features = compute_features(pose_result, height_cm=height_cm, age=age)
+        features = compute_features(pose_result, height_cm=height_cm, age=age, gender=gender)
 
         # Stage 3 — weight estimation (MC Dropout)
         estimation = request.app.state.weight_estimator.predict(features)
@@ -190,9 +197,10 @@ async def analyze(
         # Catch-all for unexpected failures.  Log the full traceback server-
         # side but return a safe message that does not leak internals.
         _log.exception(
-            "Unexpected error during /analyze | height_cm=%s | age=%s",
+            "Unexpected error during /analyze | height_cm=%s | age=%s | gender=%s",
             height_cm,
             age,
+            gender,
         )
         raise HTTPException(
             status_code=500,

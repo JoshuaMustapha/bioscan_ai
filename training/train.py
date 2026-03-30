@@ -37,6 +37,67 @@ log = logging.getLogger(__name__)
 # caught at the start of a training run rather than silently ignored.
 _MLP_HIDDEN_SIZES: list[int] = [128, 64, 32]
 
+# Raw ANSUR II columns consumed by _map_ansur_to_features.  All linear
+# measurements are in millimetres; stature is used as the normalisation
+# denominator.
+_ANSUR_RAW_COLUMNS: list[str] = [
+    "biacromialbreadth",
+    "hipbreadth",
+    "acromialheight",
+    "iliocristaleheight",
+    "acromionradialelength",
+    "crotchheight",
+    "stature",
+    "Age",
+    "weightkg",
+]
+
+
+def _map_ansur_to_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Map ANSUR II raw measurement columns to the BioScan AI feature vector.
+
+    All linear measurements in ANSUR II are in millimetres.  Dividing by
+    stature produces dimensionless ratios that mirror what the MediaPipe
+    pipeline produces at inference time (landmark coordinates normalised by
+    image dimensions / torso height).
+
+    ``df`` must already contain an injected ``gender`` column (1 = male,
+    0 = female) before this function is called.
+
+    Args:
+        df: ANSUR II DataFrame with the columns in ``_ANSUR_RAW_COLUMNS``
+            plus an already-injected ``gender`` column.
+
+    Returns:
+        A new DataFrame whose columns are exactly ``Config.feature_columns``
+        plus ``weight_kg`` (the target).
+    """
+    stature = df["stature"]  # mm
+
+    shoulder_width = df["biacromialbreadth"] / stature
+    hip_width = df["hipbreadth"] / stature
+    torso_height = (df["acromialheight"] - df["iliocristaleheight"]) / stature
+    arm_length = df["acromionradialelength"] / stature
+    leg_length = df["crotchheight"] / stature
+
+    return pd.DataFrame(
+        {
+            "shoulder_width": shoulder_width,
+            "hip_width": hip_width,
+            "shoulder_to_hip_ratio": df["biacromialbreadth"] / df["hipbreadth"],
+            "torso_height": torso_height,
+            "silhouette_area": shoulder_width * torso_height,
+            "left_arm_length": arm_length,
+            "right_arm_length": arm_length,
+            "leg_length": leg_length,
+            "height_cm": stature / 10.0,
+            "age": df["Age"],
+            "gender": df["gender"],
+            "weight_kg": df["weightkg"],
+        },
+        index=df.index,
+    )
+
 
 def _validate_columns(df: pd.DataFrame, path: object, required: list[str]) -> None:
     """Raise ValueError if any required column is absent from the DataFrame.
@@ -78,40 +139,78 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # Load datasets
     # -------------------------------------------------------------------------
-    required_columns = cfg.feature_columns + [cfg.target_column]
+    # ANSUR II CSVs contain raw anthropometric measurements (mm), not the
+    # derived feature vector.  Validate against _ANSUR_RAW_COLUMNS, then call
+    # _map_ansur_to_features to produce the canonical feature DataFrame.
+    # SMPL CSVs already use feature column names, so they are validated against
+    # the feature list directly (gender excluded — it may be absent or added).
+    smpl_required = [c for c in cfg.feature_columns if c != "gender"] + [cfg.target_column]
 
-    log.info("Loading ANSUR II data from %s", cfg.ansur_csv_path)
+    log.info("Loading ANSUR II male data from %s", cfg.ansur_male_csv_path)
     try:
-        ansur_df = pd.read_csv(cfg.ansur_csv_path)
+        ansur_male_df = pd.read_csv(cfg.ansur_male_csv_path, encoding="latin-1")
     except FileNotFoundError:
-        log.error("ANSUR II CSV not found: %s", cfg.ansur_csv_path)
+        log.error("ANSUR II male CSV not found: %s", cfg.ansur_male_csv_path)
         sys.exit(1)
-    _validate_columns(ansur_df, cfg.ansur_csv_path, required_columns)
-    log.info("ANSUR II: %d rows loaded", len(ansur_df))
+    _validate_columns(ansur_male_df, cfg.ansur_male_csv_path, _ANSUR_RAW_COLUMNS)
+    ansur_male_df = ansur_male_df.copy()
+    ansur_male_df["gender"] = 1
+    ansur_male_df = _map_ansur_to_features(ansur_male_df)
+    log.info("ANSUR II male: %d rows loaded and mapped", len(ansur_male_df))
+
+    log.info("Loading ANSUR II female data from %s", cfg.ansur_female_csv_path)
+    try:
+        ansur_female_df = pd.read_csv(cfg.ansur_female_csv_path, encoding="latin-1")
+    except FileNotFoundError:
+        log.error("ANSUR II female CSV not found: %s", cfg.ansur_female_csv_path)
+        sys.exit(1)
+    _validate_columns(ansur_female_df, cfg.ansur_female_csv_path, _ANSUR_RAW_COLUMNS)
+    ansur_female_df = ansur_female_df.copy()
+    ansur_female_df["gender"] = 0
+    ansur_female_df = _map_ansur_to_features(ansur_female_df)
+    log.info("ANSUR II female: %d rows loaded and mapped", len(ansur_female_df))
 
     log.info("Loading SMPL synthetic data from %s", cfg.smpl_csv_path)
+    smpl_df: pd.DataFrame | None = None
     try:
         smpl_df = pd.read_csv(cfg.smpl_csv_path)
+        _validate_columns(smpl_df, cfg.smpl_csv_path, smpl_required)
+        smpl_df = smpl_df.copy()
+        # SMPL synthetic data does not carry a definitive biological sex label;
+        # default to 0 so the column is present. Replace with real labels if the
+        # SMPL dataset includes them.
+        smpl_df.setdefault("gender", 0)
+        log.info("SMPL: %d rows loaded", len(smpl_df))
     except FileNotFoundError:
-        log.error("SMPL CSV not found: %s", cfg.smpl_csv_path)
-        sys.exit(1)
-    _validate_columns(smpl_df, cfg.smpl_csv_path, required_columns)
-    log.info("SMPL: %d rows loaded", len(smpl_df))
+        log.warning(
+            "SMPL CSV not found: %s — continuing with ANSUR II data only.",
+            cfg.smpl_csv_path,
+        )
 
     # -------------------------------------------------------------------------
-    # Merge with source column so origin is traceable in the combined DataFrame
+    # Merge with source tag
     # -------------------------------------------------------------------------
-    ansur_df = ansur_df.copy()
-    smpl_df = smpl_df.copy()
+    ansur_df = pd.concat([ansur_male_df, ansur_female_df], ignore_index=True)
     ansur_df["source"] = "ansur"
-    smpl_df["source"] = "smpl"
-    combined_df = pd.concat([ansur_df, smpl_df], ignore_index=True)
-    log.info(
-        "Combined dataset: %d rows (ansur=%d, smpl=%d)",
-        len(combined_df),
-        len(ansur_df),
-        len(smpl_df),
-    )
+
+    if smpl_df is not None:
+        smpl_df["source"] = "smpl"
+        combined_df = pd.concat([ansur_df, smpl_df], ignore_index=True)
+        log.info(
+            "Combined dataset: %d rows (ansur_male=%d, ansur_female=%d, smpl=%d)",
+            len(combined_df),
+            len(ansur_male_df),
+            len(ansur_female_df),
+            len(smpl_df),
+        )
+    else:
+        combined_df = ansur_df
+        log.info(
+            "Combined dataset: %d rows (ansur_male=%d, ansur_female=%d, smpl=0)",
+            len(combined_df),
+            len(ansur_male_df),
+            len(ansur_female_df),
+        )
 
     # -------------------------------------------------------------------------
     # Train / validation split

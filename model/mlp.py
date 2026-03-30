@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 # Must match the length of FeatureVector.to_list() exactly.
 # If features are added or removed from Stage 2, this constant must be updated.
-IN_FEATURES: int = 10
+IN_FEATURES: int = 11
 
 
 class _MCDropout(nn.Dropout):
@@ -49,7 +49,7 @@ class _MCDropout(nn.Dropout):
 class BioScanMLP(nn.Module):
     """Multi-Layer Perceptron that estimates body weight from anthropometric features.
 
-    Takes a scaled 10-feature vector produced by ``pipeline/feature_engineer.py``
+    Takes a scaled 11-feature vector produced by ``pipeline/feature_engineer.py``
     and outputs a single scalar: the estimated weight in kilograms.
 
     Dropout layers use :class:`_MCDropout` so they remain active at inference
@@ -58,7 +58,7 @@ class BioScanMLP(nn.Module):
 
     Architecture::
 
-        Input  (10)  →  Linear(128) → ReLU → MCDropout(p)
+        Input  (11)  →  Linear(128) → ReLU → MCDropout(p)
                       →  Linear(64)  → ReLU → MCDropout(p)
                       →  Linear(32)  → ReLU → MCDropout(p)
                       →  Linear(1)
@@ -66,7 +66,7 @@ class BioScanMLP(nn.Module):
     Args:
         in_features: Number of input features.  Must match
             ``FeatureVector.to_list()`` length.  Defaults to
-            :data:`IN_FEATURES` (10).
+            :data:`IN_FEATURES` (11).
         dropout_p: Dropout probability applied after each hidden layer.
             Defaults to 0.3.
     """

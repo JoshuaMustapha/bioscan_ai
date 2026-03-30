@@ -179,6 +179,29 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #loading p { color: var(--muted); font-size: 0.92rem; letter-spacing: 0.03em; }
+    #loading[hidden] { display: none; }
+
+    /* ── Countdown overlay ───────────────────────────────── */
+    #countdown {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 6rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 50%;
+      z-index: 10;
+      line-height: 1;
+      pointer-events: none;
+    }
+    #countdown[hidden] { display: none; }
 
     /* ── Results ─────────────────────────────────────────── */
     .weight-display {
@@ -349,12 +372,22 @@
           <input type="number" id="age" min="5" max="120" step="1" placeholder="30" />
         </div>
       </div>
+      <div class="inputs-row" style="margin-top:16px;">
+        <div class="input-group" style="grid-column:1/-1;">
+          <label for="gender">Gender</label>
+          <select id="gender" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:1.05rem;padding:10px 14px;outline:none;transition:border-color 0.15s;">
+            <option value="1">Male</option>
+            <option value="0">Female</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <!-- Webcam -->
     <div class="card">
       <div class="video-wrapper">
         <video id="webcam-video" autoplay playsinline muted></video>
+        <div id="countdown" hidden></div>
         <div id="camera-denied" hidden>
           Camera access was denied or is unavailable.<br />
           Allow camera permissions in your browser and reload the page.
@@ -414,7 +447,7 @@
     <!-- QR code (toggle) -->
     <div id="qr-section" class="qr-section" hidden>
       <h3>Scan with your phone to use the rear camera</h3>
-      <img src="./static/qr_mobile.png" alt="QR code linking to BioScan AI mobile page" />
+      <img src="/static/qr_mobile.png" alt="QR code linking to BioScan AI mobile page" />
       <p class="qr-hint">
         Generate with:
         <code>python frontend/qr_generator.py &lt;ngrok-url&gt;</code>

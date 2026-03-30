@@ -13,16 +13,16 @@ import math
 import types
 from dataclasses import dataclass
 
-import mediapipe as mp
+from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmark
 
 from pipeline.pose_detector import PoseDetectionResult
 
 # Convenience alias so call-sites read as plain English.
-_PL = mp.solutions.pose.PoseLandmark
+_PL = PoseLandmark
 
 # Landmarks that must be sufficiently visible for features to be reliable.
 # Any landmark below the threshold triggers a ValueError before computation.
-_CRITICAL_LANDMARKS: tuple[mp.solutions.pose.PoseLandmark, ...] = (
+_CRITICAL_LANDMARKS: tuple[PoseLandmark, ...] = (
     _PL.LEFT_SHOULDER,
     _PL.RIGHT_SHOULDER,
     _PL.LEFT_HIP,
@@ -71,6 +71,8 @@ class FeatureVector:
             estimated from the image.
         age: User-supplied age in years, stored as a float for uniformity
             with the rest of the feature vector.
+        gender: User-supplied biological sex encoded as a float: 1.0 for
+            male, 0.0 for female.  Not estimated from the image.
     """
 
     shoulder_width: float
@@ -83,6 +85,7 @@ class FeatureVector:
     leg_length: float
     height_cm: float
     age: float
+    gender: float
 
     def to_list(self) -> list[float]:
         """Return all features as an ordered list of floats.
@@ -92,7 +95,7 @@ class FeatureVector:
         Call this method when constructing a PyTorch input tensor.
 
         Returns:
-            A list of 10 floats in the canonical feature order.
+            A list of 11 floats in the canonical feature order.
         """
         return [
             self.shoulder_width,
@@ -105,6 +108,7 @@ class FeatureVector:
             self.leg_length,
             self.height_cm,
             self.age,
+            self.gender,
         ]
 
 
@@ -112,13 +116,14 @@ def compute_features(
     result: PoseDetectionResult,
     height_cm: float,
     age: int,
+    gender: int,
 ) -> FeatureVector:
     """Compute the anthropometric feature vector from a pose detection result.
 
     Validates that all critical landmarks are sufficiently visible, then
     derives each feature from the named landmark positions using MediaPipe's
-    ``PoseLandmark`` enum.  User-supplied ``height_cm`` and ``age`` are
-    appended as-is; they are not derived from the image.
+    ``PoseLandmark`` enum.  User-supplied ``height_cm``, ``age``, and
+    ``gender`` are appended as-is; they are not derived from the image.
 
     Args:
         result: The :class:`~pipeline.pose_detector.PoseDetectionResult`
@@ -126,9 +131,11 @@ def compute_features(
         height_cm: The user's standing height in centimetres, as provided
             in the API request.
         age: The user's age in years, as provided in the API request.
+        gender: Biological sex encoded as an integer: 1 for male, 0 for
+            female, as provided in the API request.
 
     Returns:
-        A :class:`FeatureVector` containing 10 features ready for scaling
+        A :class:`FeatureVector` containing 11 features ready for scaling
         and MLP inference.
 
     Raises:
@@ -181,6 +188,7 @@ def compute_features(
         leg_length=leg_length,
         height_cm=float(height_cm),
         age=float(age),
+        gender=float(gender),
     )
 
 

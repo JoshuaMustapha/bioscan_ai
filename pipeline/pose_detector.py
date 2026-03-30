@@ -1,8 +1,15 @@
 """Stage 1: Human pose detection using MediaPipe Pose.
 
-Wraps MediaPipe Pose to extract 33 body landmark coordinates from a single
-image. Designed to be instantiated once (e.g. at API startup) and reused
-across requests to amortise initialisation cost.
+Wraps MediaPipe PoseLandmarker (Tasks API) to extract 33 body landmark
+coordinates from a single image. Designed to be instantiated once (e.g. at
+API startup) and reused across requests to amortise initialisation cost.
+
+Requires a MediaPipe pose landmarker ``.task`` model file.  Download
+``pose_landmarker_full.task`` from the MediaPipe model repository and place it
+in ``model/`` before starting the server::
+
+    https://storage.googleapis.com/mediapipe-models/pose_landmarker/
+    pose_landmarker_full/float16/latest/pose_landmarker_full.task
 """
 
 from __future__ import annotations
@@ -14,8 +21,13 @@ from pathlib import Path
 from typing import Union
 
 import cv2
-import mediapipe as mp
 import numpy as np
+from mediapipe import Image as MpImage, ImageFormat
+from mediapipe.tasks.python.core.base_options import BaseOptions
+from mediapipe.tasks.python.vision.pose_landmarker import (
+    PoseLandmarker,
+    PoseLandmarkerOptions,
+)
 
 
 @dataclass
@@ -24,12 +36,12 @@ class PoseDetectionResult:
 
     Attributes:
         landmarks: Ordered list of 33 ``NormalizedLandmark`` objects as
-            returned by MediaPipe Pose.  Each landmark exposes ``.x``,
-            ``.y``, ``.z`` (all normalised to [0, 1] relative to image
-            dimensions, with ``z`` representing relative depth), and
+            returned by MediaPipe PoseLandmarker.  Each landmark exposes
+            ``.x``, ``.y``, ``.z`` (all normalised to [0, 1] relative to
+            image dimensions, with ``z`` representing relative depth), and
             ``.visibility`` (confidence that the landmark is visible,
             in [0, 1]).  Landmark ordering follows the
-            ``mp.solutions.pose.PoseLandmark`` enum.
+            ``PoseLandmark`` enum.
         confidence: Mean visibility score across all 33 landmarks,
             in [0, 1].  Provides a single scalar summary of how
             reliably the pose was detected.
@@ -37,13 +49,13 @@ class PoseDetectionResult:
             MediaPipe inference call.
     """
 
-    landmarks: list  # list[mediapipe.framework.formats.landmark_pb2.NormalizedLandmark]
+    landmarks: list  # list[mediapipe.tasks.python.components.containers.landmark.NormalizedLandmark]
     confidence: float
     timestamp: datetime
 
 
 class PoseDetector:
-    """Extracts 33 body landmarks from a still image using MediaPipe Pose.
+    """Extracts 33 body landmarks from a still image using MediaPipe PoseLandmarker.
 
     Instantiate once and call :meth:`detect` for each image.  The
     underlying MediaPipe graph is kept alive between calls, which avoids
@@ -51,16 +63,17 @@ class PoseDetector:
     instance as a context manager) when the detector is no longer needed.
 
     Args:
+        model_path: Path to the MediaPipe pose landmarker ``.task`` model
+            file.  Defaults to ``model/pose_landmarker_full.task`` relative
+            to the repository root.  Raises :exc:`FileNotFoundError` at
+            construction time if the file does not exist.
         min_detection_confidence: Minimum confidence value [0.0, 1.0]
             required for pose detection to be considered successful.
             Defaults to 0.5.
         min_tracking_confidence: Minimum confidence value [0.0, 1.0]
             for landmark tracking between frames.  Has limited effect
-            when ``static_image_mode`` is ``True`` (the default for
-            still images), but kept for API consistency.  Defaults to 0.5.
-        model_complexity: MediaPipe model complexity level.
-            0 = Lite (fastest), 1 = Full (default), 2 = Heavy (most
-            accurate, slowest).
+            for still-image inference, but kept for API consistency.
+            Defaults to 0.5.
         max_side_px: Images whose longest side exceeds this value are
             resized (preserving aspect ratio) before inference.
             Defaults to 1280.
@@ -72,33 +85,47 @@ class PoseDetector:
         print(result.confidence, len(result.landmarks))
 
         # Or as a context manager:
-        with PoseDetector(model_complexity=2) as detector:
+        with PoseDetector(model_path="model/pose_landmarker_full.task") as detector:
             result = detector.detect(numpy_bgr_array)
     """
 
     def __init__(
         self,
+        model_path: Union[str, Path, None] = None,
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
-        model_complexity: int = 1,
         max_side_px: int = 1280,
     ) -> None:
-        """Initialise the MediaPipe Pose graph with the given configuration."""
-        self._pose = mp.solutions.pose.Pose(
-            static_image_mode=True,
-            model_complexity=model_complexity,
-            min_detection_confidence=min_detection_confidence,
+        """Initialise the MediaPipe PoseLandmarker graph with the given configuration."""
+        if model_path is None:
+            model_path = (
+                Path(__file__).resolve().parent.parent
+                / "model"
+                / "pose_landmarker_full.task"
+            )
+        model_path = Path(model_path)
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"MediaPipe pose landmarker model not found: {model_path}\n"
+                "Download pose_landmarker_full.task and place it in model/:\n"
+                "  https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+                "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
+            )
+        options = PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(model_path)),
+            min_pose_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
         )
+        self._pose = PoseLandmarker.create_from_options(options)
         self._max_side_px = max_side_px
-        # A single lock serialises concurrent process() calls on this instance.
+        # A single lock serialises concurrent detect() calls on this instance.
         # For production scale, replace with a PoseDetector pool (one instance
         # per worker thread) or offload to a ProcessPoolExecutor to eliminate
         # lock contention entirely.
         self._lock = threading.Lock()
 
     def detect(self, image: Union[np.ndarray, str, Path]) -> PoseDetectionResult:
-        """Run MediaPipe Pose on an image and return the 33 body landmarks.
+        """Run MediaPipe PoseLandmarker on an image and return the 33 body landmarks.
 
         Args:
             image: The source image, provided as one of:
@@ -124,19 +151,20 @@ class PoseDetector:
         """
         rgb = self._load_as_rgb(image)
         rgb = self._cap_size(rgb)
+        mp_image = MpImage(image_format=ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
         timestamp = datetime.now(tz=timezone.utc)
         with self._lock:
-            results = self._pose.process(rgb)
+            results = self._pose.detect(mp_image)
 
-        if results.pose_landmarks is None:
+        if not results.pose_landmarks:
             raise ValueError(
                 "No person detected in the image. "
                 "Ensure the full body is visible in the frame, the image is "
                 "well-lit, and the subject is not heavily occluded or cropped."
             )
 
-        landmark_list = list(results.pose_landmarks.landmark)
-        confidence = float(np.mean([lm.visibility for lm in landmark_list]))
+        landmark_list = results.pose_landmarks[0]
+        confidence = float(np.mean([lm.visibility or 0.0 for lm in landmark_list]))
 
         return PoseDetectionResult(
             landmarks=landmark_list,
@@ -210,7 +238,7 @@ class PoseDetector:
         return cv2.resize(rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     def close(self) -> None:
-        """Release the underlying MediaPipe Pose resources.
+        """Release the underlying MediaPipe PoseLandmarker resources.
 
         Call this when the detector is no longer needed, or prefer using
         the detector as a context manager to have resources released

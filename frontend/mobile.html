@@ -191,6 +191,29 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #loading p { color: var(--muted); font-size: 0.92rem; }
+    #loading[hidden] { display: none; }
+
+    /* ── Countdown overlay ───────────────────────────────── */
+    #countdown {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 6rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 50%;
+      z-index: 10;
+      line-height: 1;
+      pointer-events: none;
+    }
+    #countdown[hidden] { display: none; }
 
     /* ── Results ─────────────────────────────────────── */
     .weight-display { text-align: center; padding: 14px 0 6px; }
@@ -320,12 +343,20 @@
         <input type="number" id="age" min="5" max="120" step="1"
                placeholder="30" inputmode="numeric" />
       </div>
+      <div class="input-group">
+        <label for="gender">Gender</label>
+        <select id="gender" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1.1rem;padding:13px 16px;outline:none;transition:border-color 0.15s;">
+          <option value="1">Male</option>
+          <option value="0">Female</option>
+        </select>
+      </div>
     </div>
 
     <!-- Camera / preview -->
     <div class="card">
       <div class="camera-wrapper" id="camera-wrapper">
         <video id="mobile-video" autoplay playsinline muted></video>
+        <div id="countdown" hidden></div>
         <img id="photo-preview" alt="Captured photo preview" hidden />
         <div id="camera-unavailable" hidden>
           Camera unavailable. Use the file chooser below to select a photo.

@@ -15,6 +15,7 @@
   // ── Element references ───────────────────────────────────────────────────
   var video           = document.getElementById('mobile-video');
   var canvas          = document.getElementById('mobile-canvas');
+  var countdown       = document.getElementById('countdown');
   var photoPreview    = document.getElementById('photo-preview');
   var cameraUnavail   = document.getElementById('camera-unavailable');
   var fileLabel       = document.getElementById('file-label');
@@ -72,6 +73,25 @@
     cameraUnavail.hidden = false;
     fileLabel.hidden = false;
     takePhotoBtn.hidden = true;
+  }
+
+  // ── Countdown ────────────────────────────────────────────────────────────
+  function runCountdown(callback) {
+    var count = 3;
+    takePhotoBtn.disabled = true;
+    countdown.textContent = count;
+    countdown.hidden      = false;
+
+    var interval = setInterval(function () {
+      count -= 1;
+      if (count > 0) {
+        countdown.textContent = count;
+      } else {
+        clearInterval(interval);
+        countdown.hidden = true;
+        callback();
+      }
+    }, 1000);
   }
 
   // ── Capture from live stream ─────────────────────────────────────────────
@@ -151,6 +171,7 @@
 
     var heightCm = parseFloat(document.getElementById('height-cm').value);
     var age      = parseInt(document.getElementById('age').value, 10);
+    var gender   = parseInt(document.getElementById('gender').value, 10);
 
     if (!heightCm || isNaN(heightCm) || heightCm < 50 || heightCm > 300) {
       showError('Please enter a valid height between 50 and 300 cm.');
@@ -166,6 +187,7 @@
     fd.append('image', _capturedBlob, 'photo.jpg');
     fd.append('height_cm', heightCm);
     fd.append('age', age);
+    fd.append('gender', gender);
 
     setLoading(true);
     hideError();
@@ -251,7 +273,9 @@
   function hideResults() { results.hidden  = true; }
 
   // ── Event listeners ──────────────────────────────────────────────────────
-  takePhotoBtn.addEventListener('click', captureFromStream);
+  takePhotoBtn.addEventListener('click', function () {
+    runCountdown(captureFromStream);
+  });
   analyzeBtn.addEventListener('click', submit);
   retakeBtn.addEventListener('click', resetToCamera);
 

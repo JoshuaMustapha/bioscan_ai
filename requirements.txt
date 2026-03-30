@@ -13,13 +13,13 @@ pydantic==2.7.1
 # MediaPipe Pose extracts the 33 body landmarks that Stage 2 converts into
 # anthropometric features.
 opencv-python==4.10.0.84
-mediapipe==0.10.11
+mediapipe==0.10.33
 
 # ── Deep learning ─────────────────────────────────────────────────────────────
 # PyTorch provides the MLP architecture (nn.Module, nn.Linear, F.dropout),
 # the training loop (optim.Adam, lr_scheduler), DataLoader, and tensor ops
 # used throughout inference and the Monte Carlo Dropout uncertainty estimation.
-torch==2.3.0
+torch==2.11.0
 
 # ── Numerical computing and data science ──────────────────────────────────────
 # NumPy: array operations in feature engineering, MC Dropout statistics
@@ -30,9 +30,9 @@ torch==2.3.0
 #               for the training/validation split.
 # joblib: serialising and deserialising the fitted StandardScaler alongside
 #         the model checkpoint (joblib.dump / joblib.load).
-numpy==1.26.4
-pandas==2.2.2
-scikit-learn==1.5.0
+numpy==2.0.0
+pandas==2.2.3
+scikit-learn==1.6.1
 joblib==1.4.2
 
 # ── QR code generation ────────────────────────────────────────────────────────

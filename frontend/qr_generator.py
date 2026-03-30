@@ -5,8 +5,7 @@ Usage::
     python frontend/qr_generator.py https://abc123.ngrok.io
 
 The QR code image is written to frontend/static/qr_mobile.png and is served
-by FastAPI at /static/static/qr_mobile.png (because frontend/ is mounted at
-/static).  The desktop UI loads it from that path automatically.
+by FastAPI at /static/qr_mobile.png.
 
 Requirements::
 
@@ -21,16 +20,47 @@ from pathlib import Path
 
 try:
     import qrcode
-except ImportError:
-    print(
-        "ERROR: 'qrcode' is not installed.\n"
-        "Install it with:  pip install qrcode[pil]",
-        file=sys.stderr,
+except ImportError as _qr_missing:
+    qrcode = None  # type: ignore[assignment]
+    _QR_MISSING_ERROR = _qr_missing
+else:
+    _QR_MISSING_ERROR = None
+
+# Saved directly under frontend/ so FastAPI serves it at /static/qr_mobile.png
+# (frontend/ is mounted at /static, so frontend/qr_mobile.png → /static/qr_mobile.png).
+_OUTPUT_PATH = Path(__file__).resolve().parent / "qr_mobile.png"
+
+
+def generate_qr(base_url: str) -> None:
+    """Generate a QR code linking to the mobile page and save it to
+    frontend/qr_mobile.png (served by FastAPI at /static/qr_mobile.png).
+
+    Args:
+        base_url: Base URL of the running server, e.g. https://abc123.ngrok.io
+                  or http://127.0.0.1:8000 for local development.
+    """
+    if _QR_MISSING_ERROR is not None:
+        raise ImportError(
+            "'qrcode' is not installed. Install it with: pip install qrcode[pil]"
+        ) from _QR_MISSING_ERROR
+
+    mobile_url = f"{base_url.rstrip('/')}/static/mobile.html"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
     )
-    sys.exit(1)
+    qr.add_data(mobile_url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    _OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    img.save(_OUTPUT_PATH)
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     parser = argparse.ArgumentParser(
         description="Generate a QR code linking to the BioScan AI mobile page.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -48,24 +78,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    base_url = args.base_url.rstrip("/")
-    mobile_url = f"{base_url}/static/mobile.html"
+    if _QR_MISSING_ERROR is not None:
+        print(
+            "ERROR: 'qrcode' is not installed.\n"
+            "Install it with:  pip install qrcode[pil]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(mobile_url)
-    qr.make(fit=True)
+    generate_qr(args.base_url)
 
-    img = qr.make_image(fill_color="black", back_color="white")
-
-    output_path = Path("frontend/static/qr_mobile.png")
-    img.save(output_path)
-
-    print(f"QR code saved → {output_path}")
+    mobile_url = f"{args.base_url.rstrip('/')}/static/mobile.html"
+    print(f"QR code saved → {_OUTPUT_PATH}")
     print(f"URL encoded   → {mobile_url}")
 
 

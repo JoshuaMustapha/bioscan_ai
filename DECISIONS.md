@@ -147,3 +147,17 @@ references unchanged, producing false negatives.
 Setting the threshold to zero guarantees any non-zero MC variance triggers
 low_confidence=True without needing to control random seeds or force
 specific outputs.
+
+## 33. Gender as an explicit input feature rather than training on combined data
+Body composition differs substantially between males and females at the same
+height and age — males carry more skeletal muscle mass and females carry more
+adipose tissue, producing meaningfully different weight-to-silhouette
+relationships. Training a single model on pooled ANSUR II data without a gender
+feature forces the network to average over this bimodal distribution, which
+inflates prediction error for both groups. Providing gender as an explicit
+binary feature (1 = male, 0 = female) lets the MLP learn separate weight
+responses while sharing the geometric feature layers, which is more efficient
+than training two separate models. ANSUR II ships separate male and female
+CSVs, making it straightforward to inject the label at load time without
+modifying the raw data. Gender is user-supplied and never estimated from the
+image.

@@ -32,6 +32,12 @@ class AnalyzeRequest(BaseModel):
         le=120,
         description="Age in years (5–120).",
     )
+    gender: int = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Biological sex: 0 for female, 1 for male.",
+    )
 
 
 class AnalyzeResponse(BaseModel):

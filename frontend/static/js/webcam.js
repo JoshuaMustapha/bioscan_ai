@@ -14,6 +14,7 @@
   var video      = document.getElementById('webcam-video');
   var canvas     = document.getElementById('capture-canvas');
   var captureBtn = document.getElementById('capture-btn');
+  var countdown  = document.getElementById('countdown');
   var qrBtn      = document.getElementById('qr-btn');
   var qrSection  = document.getElementById('qr-section');
   var errorBox   = document.getElementById('error-box');
@@ -89,10 +90,30 @@
     });
   }
 
+  // ── Countdown ────────────────────────────────────────────────────────────
+  function runCountdown(callback) {
+    var count = 3;
+    captureBtn.disabled  = true;
+    countdown.textContent = count;
+    countdown.hidden      = false;
+
+    var interval = setInterval(function () {
+      count -= 1;
+      if (count > 0) {
+        countdown.textContent = count;
+      } else {
+        clearInterval(interval);
+        countdown.hidden = true;
+        callback();
+      }
+    }, 1000);
+  }
+
   // ── Submit ───────────────────────────────────────────────────────────────
   function submit() {
     var heightCm = parseFloat(document.getElementById('height-cm').value);
     var age      = parseInt(document.getElementById('age').value, 10);
+    var gender   = parseInt(document.getElementById('gender').value, 10);
 
     if (!heightCm || isNaN(heightCm) || heightCm < 50 || heightCm > 300) {
       showError('Please enter a valid height between 50 and 300 cm.');
@@ -109,6 +130,7 @@
         fd.append('image', blob, 'capture.jpg');
         fd.append('height_cm', heightCm);
         fd.append('age', age);
+        fd.append('gender', gender);
 
         setLoading(true);
         hideError();
@@ -200,7 +222,9 @@
   function hideResults() { results.hidden  = true; }
 
   // ── Event listeners ──────────────────────────────────────────────────────
-  captureBtn.addEventListener('click', submit);
+  captureBtn.addEventListener('click', function () {
+    runCountdown(submit);
+  });
 
   qrBtn.addEventListener('click', function () {
     qrSection.hidden = !qrSection.hidden;
@@ -210,6 +234,7 @@
   });
 
   // ── Boot ─────────────────────────────────────────────────────────────────
+  loading.hidden = true;
   initWebcam();
 
 }());

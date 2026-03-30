@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api.routes.analyze import router
+from frontend.qr_generator import generate_qr
 from pipeline.pose_detector import PoseDetector
 from pipeline.weight_estimator import WeightEstimator
 from training.config import Config
@@ -48,6 +49,11 @@ async def lifespan(app: FastAPI):
         std_threshold_kg=_cfg.std_threshold_kg,
     )
     _log.info("Models loaded successfully")
+
+    _base_url = "http://127.0.0.1:8000"
+    generate_qr(_base_url)
+    _log.info("Mobile QR code generated — %s/static/mobile.html", _base_url)
+
     yield
     _log.info("BioScan AI shutting down — releasing PoseDetector")
     app.state.pose_detector.close()

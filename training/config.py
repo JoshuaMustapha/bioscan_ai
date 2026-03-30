@@ -64,7 +64,7 @@ class Config:
     """
 
     # ---- Model architecture -----------------------------------------------
-    in_features: int = 10
+    in_features: int = 11
     hidden_sizes: list[int] = field(default_factory=lambda: [128, 64, 32])
     dropout_p: float = 0.3
 
@@ -90,12 +90,16 @@ class Config:
         "leg_length",
         "height_cm",
         "age",
+        "gender",
     ])
     target_column: str = "weight_kg"
 
     # ---- Dataset paths -------------------------------------------------------
-    ansur_csv_path: Path = field(
-        default_factory=lambda: Path("training/data/raw/ansur.csv")
+    ansur_male_csv_path: Path = field(
+        default_factory=lambda: Path("training/data/raw/ANSUR_II_MALE_Public.csv")
+    )
+    ansur_female_csv_path: Path = field(
+        default_factory=lambda: Path("training/data/raw/ANSUR_II_FEMALE_Public.csv")
     )
     smpl_csv_path: Path = field(
         default_factory=lambda: Path("training/data/raw/smpl.csv")
